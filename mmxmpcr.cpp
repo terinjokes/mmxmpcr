@@ -24,10 +24,13 @@
 
 #include <Xm/Xm.h>
 #include <Xm/List.h>
-#include <Xm/PanedW.h>
+#include <Xm/Form.h>
+#include <Xm/ScrollBar.h>
+#include <X11/keysym.h> // includes keysymdef.h - needed for XK_* constants
 
-#define MMXMPCR_VERSION "MMXMPCR v2003-07-08"
+#define MMXMPCR_VERSION "MMXMPCR v2003-12-11"
 #define MMXMPCR_MAX_CHANNELS 199
+#define MMXMPCR_CHANNELS_PER_PAGE 10
 
 class mmxmpcr
 {
@@ -37,13 +40,18 @@ class mmxmpcr
 	int get_response(unsigned char *message);
 	int wait_for_response(unsigned char *message, int timeout_ms = 7000);
 	int change_channel(int channel);
+	int clear_list();
 	int dump_message(unsigned char *message, int length);
 	int handle_channel_info();
 	
 	int descriptor;
+	int top_channel;
+	int selected_channel;
+	int next_channel; // next channel to get info for
 	XtAppContext application;
 	Widget shell;
 	Widget main_window;
+	Widget scrollbar;
 	Widget list;
 
 	int response_buffer_length;
@@ -250,8 +258,27 @@ int mmxmpcr::change_channel(int channel)
 	unsigned char get_channel_info[10] = { 0x5A, 0xA5, 0x00, 0x04, 0x25, 0x08, channel, 0x00, 0xED, 0xED };
 	send_request(10, get_channel_info);
 
+	selected_channel = channel;
+	
 	return channel;
 }
+
+int mmxmpcr::clear_list()
+{
+	XmListDeleteAllItems(list);
+	
+	for (int init = 0; init < MMXMPCR_CHANNELS_PER_PAGE; ++init)
+	{
+		char string[16];
+		sprintf(string, "%02d:", top_channel + init);
+		XmString name = XmStringCreateSimple(string);
+		XmListAddItem(list, name, 0);
+		XmStringFree(name);
+	}
+	
+	return 0;
+}
+
 
 int mmxmpcr::handle_channel_info()
 {
@@ -268,19 +295,28 @@ int mmxmpcr::handle_channel_info()
 		return -1;
 	}
 
+	int list_channel = raw_data[8] - top_channel + 1;
 	char channel_data[256];
 	sprintf(channel_data, "%03d: %16.16s %16.16s %16.16s %16.16s", raw_data[8], &raw_data[10], &raw_data[28], &raw_data[45], &raw_data[61]);
-	XmString name = XmStringCreateSimple(channel_data);
-	XmListReplaceItemsPos(list, &name, 1, raw_data[8] + 1);
-	XmStringFree(name);
 
-	// printf("%s\n", channel_data);
+	// When requesting data for a nonexistant channel, sometimes raw_data[8] is a spurious channel number
+	// However, 7 and 8 are different for higher number channels	
+	if ((raw_data[7] == raw_data[8]) || (raw_data[8] > 120))
+	{
+		XmString name = XmStringCreateSimple(channel_data);
+		XmListReplaceItemsPos(list, &name, 1, list_channel);
+		XmStringFree(name);
 
-	static int next_channel = 0;
+		if (selected_channel == raw_data[8])
+			XmListSelectPos(list, list_channel, 0);
+	}
+
+	// printf("%03d %03d: %s\n", raw_data[7], raw_data[8], channel_data);
 
 	++next_channel;
-	if (next_channel >= MMXMPCR_MAX_CHANNELS)
-		next_channel = 1;
+
+	if ((next_channel < top_channel) || (next_channel > (top_channel + MMXMPCR_CHANNELS_PER_PAGE)))
+		next_channel = top_channel;
 
 	unsigned char get_channel_info[10] = { 0x5A, 0xA5, 0x00, 0x04, 0x25, 0x08, next_channel, 0x00, 0xED, 0xED };
 	send_request(10, get_channel_info);
@@ -333,18 +369,118 @@ void select_callback(Widget widget, XtPointer client_data, XtPointer call_data)
 
 	int selection_count = 0;
 	int *selected_positions = NULL;
+	XmString *strings = NULL;
+
 	XtVaGetValues(context->list,
 		XmNselectedItemCount, &selection_count, 
 		XmNselectedPositions, &selected_positions,
+		XmNselectedItems, &strings,
 		NULL);
 
-	if (selected_positions)
+	char *text = NULL;
+	
+	if (!strings)
+		printf("No selection strings\n");
+
+	else if (XmStringGetLtoR(strings[0], XmFONTLIST_DEFAULT_TAG, &text) && text && text[0])
 	{
-		printf("Changing to channel %d\n", (*selected_positions) - 1);	
-		context->change_channel((*selected_positions) - 1);
+		int channel = atoi(text);
+		printf("Changing to channel %d\n", channel);	
+		context->change_channel(channel);
+		XtFree(text);
 	}
 	else
-		printf("No selections\n");
+		printf("Bad selection string\n");
+}
+
+void scrollbar_callback(Widget widget, XtPointer client_data, XtPointer call_data)
+{
+	mmxmpcr *context = (mmxmpcr*) client_data;
+	
+	int page = 0;
+	XtVaGetValues(context->scrollbar, XmNvalue, &page, NULL);
+	
+	context->top_channel = page * MMXMPCR_CHANNELS_PER_PAGE;
+	context->clear_list();
+}
+
+void key_press(Widget widget, XtPointer client_data, XEvent *event, Boolean *continue_flag)
+{
+	mmxmpcr *context = (mmxmpcr*) client_data;
+
+	// Mouse wheel sends two messages for each notch of the wheel - ignore the second
+	static int mouse = 0;
+	++mouse;
+	if ((mouse & 1) && (event->type & ButtonPressMask) && ((event->xbutton.button == Button4) || (event->xbutton.button == Button5)))
+		return;
+				
+        // KeySym definitions are in /usr/X11R6/include/X11/keysymdef.h
+	int keysym = XKeycodeToKeysym(event->xkey.display, event->xkey.keycode, 0);
+	// printf("Event %x, sym %x, Code %x, button %x\n", event->type, keysym, event->xkey.keycode, event->xbutton.button);
+
+	if ((event->type & ButtonPressMask) && (event->xbutton.button == Button4) && (context->top_channel > 0))
+	{
+		context->top_channel -= MMXMPCR_CHANNELS_PER_PAGE;
+		context->clear_list();
+		XtVaSetValues(context->scrollbar, XmNvalue, context->top_channel / MMXMPCR_CHANNELS_PER_PAGE, NULL);
+	}
+
+	else if ((event->type & KeyReleaseMask) && (keysym == XK_Prior) && (context->top_channel > 0))
+	{
+		context->top_channel -= MMXMPCR_CHANNELS_PER_PAGE;
+		context->clear_list();
+		XtVaSetValues(context->scrollbar, XmNvalue, context->top_channel / MMXMPCR_CHANNELS_PER_PAGE, NULL);
+	}
+	
+	else if ((event->type & ButtonPressMask) && (event->xbutton.button == Button5) && (context->top_channel < MMXMPCR_MAX_CHANNELS))
+	{
+		context->top_channel += MMXMPCR_CHANNELS_PER_PAGE;
+		context->clear_list();
+		XtVaSetValues(context->scrollbar, XmNvalue, context->top_channel / MMXMPCR_CHANNELS_PER_PAGE, NULL);
+	}
+	
+	else if ((event->type & KeyReleaseMask) && (keysym == XK_Next) && (context->top_channel < MMXMPCR_MAX_CHANNELS))
+	{
+		context->top_channel += MMXMPCR_CHANNELS_PER_PAGE;
+		context->clear_list();
+		XtVaSetValues(context->scrollbar, XmNvalue, context->top_channel / MMXMPCR_CHANNELS_PER_PAGE, NULL);
+	}
+	
+	else if (((event->type & KeyReleaseMask) || (event->type & KeyPressMask)) && (keysym >= XK_0) && (keysym <= XK_9))
+	{
+		int entry = keysym - XK_0 + 1;
+		// Select Position = 0 selects the last item in the list - MOTIF is madness :+(
+		XmListSelectPos(context->list, entry, 1);
+	}
+
+	else if (((event->type & KeyReleaseMask) || (event->type & KeyPressMask)) && (keysym == XK_Up) && (context->selected_channel > 1))
+	{
+		context->change_channel(context->selected_channel - 1);
+		if (context->selected_channel < (context->top_channel))
+		{
+			context->top_channel -= MMXMPCR_CHANNELS_PER_PAGE;
+			context->clear_list();
+			XtVaSetValues(context->scrollbar, XmNvalue, context->top_channel / MMXMPCR_CHANNELS_PER_PAGE, NULL);
+		}
+	}
+	
+	else if (((event->type & KeyReleaseMask) || (event->type & KeyPressMask)) && (keysym == XK_Down))
+	{
+		context->change_channel(context->selected_channel + 1);
+		if (context->selected_channel >= (context->top_channel + MMXMPCR_CHANNELS_PER_PAGE))
+		{
+			context->top_channel += MMXMPCR_CHANNELS_PER_PAGE;
+			context->clear_list();
+			XtVaSetValues(context->scrollbar, XmNvalue, context->top_channel / MMXMPCR_CHANNELS_PER_PAGE, NULL);
+		}
+	}
+
+	else if (((event->type & KeyReleaseMask) || (event->type & KeyPressMask)) && ((keysym == XK_Q) || (keysym == XK_q)))
+	{
+		printf("Exiting\n");
+		exit(0);
+	}
+
 }
 
 int main(int argc, char **argv)
@@ -368,38 +504,49 @@ int main(int argc, char **argv)
 	char *fake_argv = "mmxmpcr";
 	context.shell = XtVaOpenApplication (&context.application, "mmxmpcr", NULL, 0,
 		&fake_argc, &fake_argv, default_resources, sessionShellWidgetClass,
-		XmNwidth, 600,
-		XmNheight, 220,
+		XmNwidth, 500,
+		// XmNheight, 220,
 		XmNtitle, MMXMPCR_VERSION,
 		NULL);
 
-	// Atom WM_DELETE_WINDOW = XInternAtom(XtDisplay(shell), "WM_DELETE_WINDOW", False);
-	// XmAddWMProtocolCallback(shell, WM_DELETE_WINDOW, destroy_callback, (XtPointer) &context);
+	context.main_window = XtVaCreateManagedWidget("main_window", xmFormWidgetClass, context.shell, NULL);
 
-	context.main_window = XtVaCreateWidget("main_window", xmPanedWindowWidgetClass, context.shell,
-		XmNsashWidth, 1,
-		XmNsashHeight, 1, NULL);
-	XtManageChild(context.main_window);
-
-	context.list = XmCreateScrolledList(context.main_window, "list", NULL, 0);
-	XtVaSetValues(context.list,
-		XmNselectionPolicy, XmSINGLE_SELECT,
-		XmNwidth, 600,
-		XmNvisibleItemCount, 10,
+	context.scrollbar = XtVaCreateManagedWidget("scrollbar", xmScrollBarWidgetClass, context.main_window,
+		XmNrightAttachment, XmATTACH_FORM,
+		XmNtopAttachment, XmATTACH_FORM,
+		XmNbottomAttachment, XmATTACH_FORM,			
+		XmNminimum, 0,
+		XmNmaximum, (MMXMPCR_MAX_CHANNELS + 1) / MMXMPCR_CHANNELS_PER_PAGE,
+		XmNvalue, 0,
+		XmNpageIncrement, 1,
+		XmNorientation, XmVERTICAL,
 		NULL);
-
+	XtAddCallback(context.scrollbar, XmNvalueChangedCallback, scrollbar_callback, (XtPointer) &context);
+	
+	context.list = XtVaCreateManagedWidget("list", xmListWidgetClass, context.main_window,
+		XmNselectionPolicy, XmSINGLE_SELECT,
+		XmNvisibleItemCount, MMXMPCR_CHANNELS_PER_PAGE,
+		XmNtopAttachment, XmATTACH_FORM,
+		XmNleftAttachment, XmATTACH_FORM,
+		XmNrightAttachment, XmATTACH_WIDGET,
+		XmNrightWidget, context.scrollbar,
+		XmNbottomAttachment, XmATTACH_FORM,			
+		NULL);
+	context.clear_list();
+	
+	// The "0" key is translated to go to the end of the list - MMXMPCR needs it to go to the top
+	// So, translations have to be removed and mouse event translations added - X is a mess
+	XtUninstallTranslations(context.list);
+	char *new_translations = 
+		"<Btn1Down>: ListBeginSelect()\n"
+		"<Btn1Up>: ListEndSelect()\n";
+	 XtTranslations translations = XtParseTranslationTable(new_translations);
+	 XtAugmentTranslations(context.list, translations);
+	
+	XtAddEventHandler(context.list, KeyPressMask, 0, (XtEventHandler) &key_press, (XtPointer) &context);
+	XtAddEventHandler(context.list, ButtonPressMask, 0, (XtEventHandler) &key_press, (XtPointer) &context);
 	XtAddCallback(context.list, XmNdefaultActionCallback, select_callback, (XtPointer) &context);
 	XtAddCallback(context.list, XmNsingleSelectionCallback, select_callback, (XtPointer) &context);
-	XtManageChild(context.list);
-
-	for (int init = 0; init <= MMXMPCR_MAX_CHANNELS; ++init)
-	{
-		char string[64];
-		sprintf(string, "Channel %d", init);
-		XmString name = XmStringCreateSimple(string);
-		XmListAddItem(context.list, name, init + 1);
-		XmStringFree(name);
-	}
 
 	XtAppAddTimeOut(context.application, 10, refresh_list, (XtPointer) &context);
 

@@ -10,13 +10,13 @@
 <h1>MMXMPCR</h1>
 
 <p>Author: Michael Minn <a href="mailto:mmxmpcr@michaelminn.com"><tt>&lt;mmxmpcr@michaelminn.com&gt;</tt></a>
-<p>June 14, 2003
+<p>December 11, 2003
 
 <hr SIZE="1">
 <i>MMXMPCR, a kernel module and command line program for playing the XM Radio PCR satellite radio receiver</i>
 <hr SIZE="1">
 
-<!------------------------------------------------------>
+<!-------------------------------------------------------->
 
 <h2>1. Introduction</h2>
 
@@ -38,11 +38,10 @@ other versions of Linux.
 <p>The communications protocol has been partially deciphered and posted on the
 <a href=http://www.xmfan.com>XM Fan Website.</a> I also did some work using USB Snoopy under Windoze. 
 Although the protocol seems relatively simple, there are some messages of unknown purpose
-that must be sent on faith. No attempt has been
-made to find a way of defeating the subscription protection that is apparently built into the
-device. Since the future of XM Radio is tenuous and dependent on income from a subscription base,
-I would encourage you to support this fabulous resource rather than expending effort on trying
-to get it for free.
+that must be sent on faith. No attempt has been made to find a way of defeating the subscription 
+protection that is apparently built into the device. Since the future of XM Radio is tenuous and 
+dependent on income from a subscription base, I would encourage you to support this fabulous resource 
+rather than expending effort on trying to get it for free.
 
 <p>MMXMPCR is provided to the open source community to promote further adoption of this device.
 There are other existing packages out there.
@@ -58,15 +57,22 @@ without a warranty of any kind.
 <hr SIZE="1">
 <h2>2. Version History &amp; Download</h2>
 
+<p><b><a href="http://www.michaelminn.com/linux/mmxmpcr/mmxmpcr-2003.12.06.tgz">Version 2003.12.11</a></b>:
+Add mouse wheel page scrolling.
+Filter out bogus channel info messages.
+Refreshes only visible channels so refresh is faster.
+Added shortcut keys - required significant modification of widget implementation.
+Fixed scrolling and selection display problems from premature 12.06 release.
+
 <p><b><a href="http://www.michaelminn.com/linux/mmxmpcr/mmxmpcr-2003.07.08.tgz">Version 2003.07.08</a></b>:
-Upgrade to use the ftdi_sio module; proprietary mmxmpcr module no longer needed. 
+Upgrade to use the ftdi_sio module - proprietary mmxmpcr module no longer needed;
 Cleared up junk display due to overlapping channel info request messages.
 
 <p><b><a href="http://www.michaelminn.com/linux/mmxmpcr/mmxmpcr-2003.06.14.tgz">Version 2003.06.14</a></b>:
 Initial release that compiles under Red Hat 8.0
 
 
-<!----------------------------------------------------------->
+<!------------------------------------------------------------>
 
 <hr SIZE="1">
 <h2>3. Installation</h2>
@@ -81,7 +87,7 @@ Download a tarball from the version list above and AS SUPERUSER decompress the t
 </pre>
 
 
-<!----------------------------------------------------------->
+<!------------------------------------------------------------>
 
 <hr SIZE="1">
 <h2>4. Uninstall</h2>
@@ -91,7 +97,7 @@ source code directory you created above. You can also go into /usr/local/bin
 and manually delete the mmxmpcr executable.
 
 
-<!----------------------------------------------------------->
+<!------------------------------------------------------------>
 
 <hr SIZE="1">
 <h2>5. Operation</h2>
@@ -107,20 +113,28 @@ are no command line arguments.
 The list refreshes sequentially and not very quickly. You can select a channel by clicking on
 the appropriate list entry. Nothing will play until you select a channel.
 
-<p>You will notice large gaps in the list.  These are unused channels. Selecting an unused
-channel will give unpredictable behavior - usually nothing happens. Because of uncertainties 
-surrounding the XM PCR protocol, channel info will sporadically be duplicated on channels where it does
-not belong.
+<p>Channels are organized in groups of 10, which works out nicely for a single page
+of display. You will notice large gaps in the list reserved for unused channels. Selecting an unused
+channel will give unpredictable behavior - usually nothing happens. 
 
 <p>The MMXMPCR program can be terminated by clicking the close icon in the title bar.
-The XM PCR will continue playing the last selected channel if the MMXMPCR program is terminated
-and can only be turned off by unplugging the device or powering down the computer.
+The XM PCR will continue playing the last selected channel if the MMXMPCR program is terminated.
+Sound can be stopped by by unplugging the device, powering down the computer, or
+restarting MMXMPCR (which resets the device).
 
-<p>Fast, simple, effective. No pretty graphics, but this is about music, not graphics.
+<p>MMXMPCR can also be operated with the following shortcut keys:
+<pre>
+	PgUp: display up one page
+	PgDn: display down one page
+	0 - 9: select channel (i.e. if top channel on the page is 40, key 5 selects channel 45)
+	q: quit
+</pre>
+
+<p>Fast, simple, effective. No pretty graphics, but this is about sounds, not pictures.
 
 <hr SIZE="1">
 
-<!----------------------------------------------------------->
+<!------------------------------------------------------------>
 
 <hr SIZE="1">
 <h2>6. Protocol</h2>
