@@ -12,334 +12,324 @@
 ****************************************************************************/
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <fcntl.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <termios.h>
+#include <sys/poll.h>
+#include <signal.h>
 
 #include <Xm/Xm.h>
 #include <Xm/List.h>
 #include <Xm/PanedW.h>
 
-#define MMXMPCR_VERSION "MMXMPCR v2003-06-14"
-#define MMXMPCR_MAX_CHANNELS 171
+#define MMXMPCR_VERSION "MMXMPCR v2003-07-08"
+#define MMXMPCR_MAX_CHANNELS 199
 
-struct mmxmpcr_context
+class mmxmpcr
 {
-	int device;
+	public:
+	mmxmpcr();
+	int send_request(int length, unsigned char *message);
+	int get_response(unsigned char *message);
+	int wait_for_response(unsigned char *message, int timeout_ms = 7000);
+	int change_channel(int channel);
+	int dump_message(unsigned char *message, int length);
+	int handle_channel_info();
+	
+	int descriptor;
 	XtAppContext application;
 	Widget shell;
 	Widget main_window;
 	Widget list;
+
+	int response_buffer_length;
+	unsigned char response_buffer[512];
 };
 
-
-int dump_data(unsigned char *data, int length)
+mmxmpcr::mmxmpcr()
 {
-	if (length > 0)
-	{
-		for (int scan = 0; scan < length; ++scan)
-			printf("%02x ", data[scan]);
+	memset(this, 0, sizeof(*this));
 
-		for (int scan = 0; scan < length; ++scan)
-			if ((data[scan] > ' ') && (data[scan] <= 0x7f))
-				printf("%c", data[scan]);
-			else 
-				printf("-");
-	}
+	printf("Opening XM PCR on %s\n", MMXMPCR_DEVICE);
 
-	printf("\n");
+	descriptor = open(MMXMPCR_DEVICE, O_RDWR);
+	if (descriptor < 0)
+		exit(fprintf(stderr, "Failure opening XM PCR device %s: %s\n", MMXMPCR_DEVICE, strerror(errno)));
+
+	struct termios terminal_info;
+	memset(&terminal_info, 0, sizeof(terminal_info));
+	if (tcgetattr(descriptor, &terminal_info) < 0)
+		perror("tcgetattr failed");
+
+	// unbuffered input so there's no wait for an EOL character
+	// terminal_info.c_lflag &= (~ICANON);
+
+	// Turn off all input processing
+	memset(&terminal_info, 0, sizeof(terminal_info));
+
+	if (tcsetattr(descriptor, TCSANOW, &terminal_info) < 0)
+		perror("tcsetattr failed");
+
+	unsigned char message[512];
+	unsigned char power_on[11] = { 0x5A, 0xA5, 0x00, 0x05, 0x00, 0x10, 0x10, 0x10, 0x01, 0xED, 0xED };
+	unsigned char get_radio_info[8] = { 0x5A, 0xA5, 0x00, 0x02, 0x70, 0x05, 0xED, 0xED };
+	unsigned char get_radio_id[7] = { 0x5A, 0xA5, 0x00, 0x01, 0x31, 0xED, 0xED };
+	unsigned char request42[8] = { 0x5A, 0xA5, 0x00, 0x02, 0x42, 0x01, 0xED, 0xED };
+	unsigned char request13[8] = { 0x5A, 0xA5, 0x00, 0x02, 0x13, 0x00, 0xED, 0xED };
+	unsigned char request50[12] = { 0x5A, 0xA5, 0x00, 0x06, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 0xED, 0xED };
+	unsigned char channel_info_request[10] = { 0x5A, 0xA5, 0x00, 0x04, 0x25, 0x09, 0x00, 0x00, 0xED, 0xED };
+
+	if (send_request(11, power_on) < 0)
+		exit(fprintf(stderr, "Failure sending power on message\n"));
+
+	else if (wait_for_response(message) < 0)
+		exit(fprintf(stderr, "Failure waiting for power on response\n"));
+
+	else if (wait_for_response(message) < 0)
+		exit(fprintf(stderr, "Failure waiting for power on acknowledgement\n"));
+
+	else if (send_request(8, get_radio_info) < 0)
+		exit(fprintf(stderr, "Failure getting radio info\n"));
+
+	else if (wait_for_response(message) < 0)
+		exit(fprintf(stderr, "Failure waiting for radio info\n"));
+
+	else if (send_request(7, get_radio_id) < 0)
+		exit(fprintf(stderr, "Failure getting radio ID\n"));
+
+	else if (wait_for_response(message) < 0)
+		exit(fprintf(stderr, "Failure waiting for radio ID\n"));
+
+	else if (send_request(8, request42) < 0)
+		exit(fprintf(stderr, "Failure getting radio init info\n"));
+
+	else if (wait_for_response(message) < 0)
+		exit(fprintf(stderr, "Failure waiting for radio init ack 42\n"));
+
+	else if (send_request(8, request13) < 0)
+		exit(fprintf(stderr, "Failure getting radio init info\n"));
+
+	else if (wait_for_response(message) < 0)
+		exit(fprintf(stderr, "Failure waiting for radio init ack 13\n"));
+
+	else if (send_request(12, request50) < 0)
+		exit(fprintf(stderr, "Failure getting radio init info\n"));
+
+	else if (wait_for_response(message) < 0)
+		exit(fprintf(stderr, "Failure waiting for radio init ack 50\n"));
+
+	else if (send_request(10, channel_info_request) < 0)
+		exit(fprintf(stderr, "Failure requesting initial channel info\n"));
+
+	// unsigned char get_signal_strength[7] = { 0x5A, 0xA5, 0x00, 0x01, 0x43, 0xED, 0xED }; // sent twice
+	// send_request(device, 7, get_signal_strength);
+	// send_request(device, 7, get_signal_strength);
+
+	printf("XM-PCR running\n");
+}
+
+int mmxmpcr::send_request(int length, unsigned char *message)
+{
+	// printf("Sending %d byte request\n", length);
+
+	if (write(descriptor, message, length) < 0)
+		exit(fprintf(stderr, "Failure writing request: %s\n", strerror(errno)));
+
+	// printf("Sent\n");
 
 	return length;
 }
 
-int device_request(char *name, int device, int d0, int d1, int d2, int d3, int d4, int d5, int d6, int d7)
+int mmxmpcr::get_response(unsigned char *message)
 {
-	// See USB 1.1 Spec pp 186 for Standard Device Request info
-	//  ioctl() data is USB control request setup data
-	//  Request Type (1 byte)
-	//  Request Code (1 byte)
-	//  Value (2 bytes)
-	//  Index (2 bytes)
-	//  Length (2 bytes)
+	//printf("Waiting for response\n");
 
-	int status = 0;
-	unsigned char data[256] = { d0, d1, d2, d3, d4, d5, d6, d7 };
+	int status = 0; 
+	struct pollfd poll_descriptor;
+	poll_descriptor.fd = descriptor;
+	poll_descriptor.events = POLLIN;
+	poll_descriptor.revents = 0;
 
-	if ((status = ioctl(device, d6, data)) < 0)
+	if (poll(&poll_descriptor, 1, 10) < 0)
+		perror("poll() failure");
+
+	else if (poll_descriptor.revents && ((status = read(descriptor, &response_buffer[response_buffer_length], 96)) < 0))
+		exit(fprintf(stderr, "Failure reading response: %s\n", strerror(errno)));
+
+	else
+		response_buffer_length += status;
+
+	// dump_message(response_buffer, response_buffer_length);
+
+	unsigned char *starter = (unsigned char*) memchr(response_buffer, 0x5a, response_buffer_length);
+	if (!starter)
+		response_buffer_length = 0;
+	else if (starter != response_buffer)
 	{
-		status = -errno;
-		fprintf(stderr, "ioctl() failure: %s\n", strerror(errno));
+		response_buffer_length -= (starter - response_buffer);
+		memmove(response_buffer, starter, response_buffer_length);
 	}
 
-	printf("%s (request %d) = %d: ", name, d1, status);
-	dump_data(data, status);
+	if (response_buffer_length <= 0)
+		return 0;
 
-	return status;
-}
-
-int device_read(char *name, int device, int length, unsigned char *data)
-{
-	int status = 0;
-	memset(data, 0, length);
-
-	if ((status = read(device, data, length)) < 0)
+	unsigned char *terminator = NULL;
+	if (response_buffer_length > 2)
 	{
-		status = -errno;
-		fprintf(stderr, "Failure reading: %s\n", strerror(errno));
+		terminator = (unsigned char*) memchr(&response_buffer[2], 0x5a, response_buffer_length - 2);
+		if (terminator && (*(terminator + 1) != 0xa5))
+			terminator = NULL;
 	}
 
-	// printf("%s: ", name);
-	// dump_data(data, status);
+	int message_length = 0;
+	if (terminator)
+		message_length = terminator - response_buffer;
 
-	return status;
-}
+	else if ((response_buffer_length >= 5) && (response_buffer[3] == 0xe3))
+		message_length = 24;
 
-int wait_for_data(int device, int max_reads, int length, unsigned char *data)
-{
-	int status = 0;
-	int received = 0;
-	int timeout = 0;
-	unsigned char buffer[256];
+	else if ((response_buffer_length >= 5) && (response_buffer[4] == 0x80)) // Hello
+		message_length = 34;
 
-	for (timeout = max_reads; ((status = read(device, buffer, sizeof(buffer))) > 0) && timeout && ((received + status - 2) <= length); --timeout)
-		if (status > 2)
-		{
-			memcpy(&data[received], &buffer[2], status - 2);
-			received += (status - 2);
-			if (received >= length)
-				timeout = 1; // read limit
-		}
+	else if ((response_buffer_length >= 5) && (response_buffer[4] == 0x81)) // Goodbye
+		message_length = 9;
 
-	// printf("Read %d bytes\n", received);
+	else if ((response_buffer_length >= 5) && (response_buffer[4] == 0x93)) // ??
+		message_length = 9;
 
-	// dump_data(data, received);
+	else if ((response_buffer_length >= 5) && (response_buffer[4] == 0xE3)) // XM info
+		message_length = 25;
 
-	return received;
-}
+	else if ((response_buffer_length >= 5) && (response_buffer[3] == 0xc2)) // ??
+		message_length = 8;
 
-int device_write(char *name, int device, int length, int d0, int d1, int d2, int d3, int d4, int d5, int d6, int d7)
-{
-	int status = 0;
-	unsigned char data[256] = { d0, d1, d2, d3, d4, d5, d6, d7 };
+	else if (response_buffer_length >= 4)
+		message_length = response_buffer[3] + 6;
 
-	if ((status = write(device, data, length)) < 0)
+	if (message_length <= response_buffer_length)
 	{
-		status = -errno;
-		fprintf(stderr, "Failure writing %d bytes: %s\n", length, strerror(errno));
+		memcpy(message, response_buffer, message_length);
+		response_buffer_length -= message_length;
+		memmove(response_buffer, &response_buffer[message_length], response_buffer_length);
+		return message_length;
 	}
 
-	// printf("Wrote %s: ", name);
-	// dump_data(data, length);
-
-	return status;
-}
-
-int initialize(int device)
-{
-	int status = 0;
-	for (int scan = 0; scan < 0x40; ++scan)
-		status = device_request("Unknown", device, 0xc0, 0x90, 0x00, 0x00, (unsigned char) scan, 0x00, 0x02, 0x00);
-
-	unsigned char buffer[256];
-
-	/*************************************************************
-	I have only a vague idea what this sequence of commands does
-	It was copied from a USB Snoopy dump when the device was
-	attached under Windoze. And it works, so I don't mess with it.
-	**************************************************************/
-
-	status = device_request("Get Descriptor", device, 0x80, 0x06, 0x00, 0x01, 0x00, 0x00, 0x0c, 0x00);
-	status = device_request("Get Descriptor", device, 0x80, 0x06, 0x00, 0x02, 0x00, 0x00, 0x09, 0x00);
-	status = device_request("Get Descriptor", device, 0x80, 0x06, 0x00, 0x02, 0x00, 0x00, 0x60, 0x00);
-	status = device_request("Set Configuration", device, 0x00, 0x09, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("Get Descriptor", device, 0x80, 0x06, 0x03, 0x03, 0x00, 0x00, 0x12, 0x00);
-	status = device_request("Get Status?", device, 0xc0, 0x05, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00);
-	status = device_request("URB 71", device, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
-	status = device_read("URB 72", device, sizeof(buffer), buffer);
-	status = device_request("URB 74", device, 0x40, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 75", device, 0x40, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00);
-	status = device_read("URB 76-87", device, sizeof(buffer), buffer);
-	status = device_request("URB 88", device, 0x40, 0x03, 0xc4, 0x09, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 90", device, 0x40, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 91", device, 0x40, 0x04, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 92", device, 0x40, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00);
-	status = device_read("URB 93-105", device, sizeof(buffer), buffer);
-	status = device_request("URB 106", device, 0x40, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00);
-	status = device_read("URB 107-118", device, sizeof(buffer), buffer);
-	status = device_request("URB 119", device, 0x40, 0x01, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00);
-	status = device_read("URB 120-135", device, sizeof(buffer), buffer);
-	status = device_request("URB 136", device, 0x40, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 137", device, 0x40, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00);
-	status = device_read("URB 138-150", device, sizeof(buffer), buffer);
-	status = device_request("URB 151", device, 0x40, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 152", device, 0x40, 0x01, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00);
-	status = device_read("URB 153-167", device, sizeof(buffer), buffer);
-	status = device_request("URB 168", device, 0x40, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 169", device, 0x40, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 171", device, 0xc0, 0x05, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00);
-	status = device_request("URB 172", device, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 174", device, 0x40, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 175", device, 0x40, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00);
-	status = device_read("URB 176-188", device, sizeof(buffer), buffer);
-	status = device_request("URB 189", device, 0x40, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 190", device, 0x40, 0x03, 0xc4, 0x09, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 191", device, 0x40, 0x04, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 192", device, 0x40, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00);
-	status = device_read("URB 193-205", device, sizeof(buffer), buffer);
-	status = device_request("URB 206", device, 0x40, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00);
-	status = device_read("URB 207-218", device, sizeof(buffer), buffer);
-	status = device_request("URB 219", device, 0x40, 0x01, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00);
-	status = device_read("URB 220-235", device, sizeof(buffer), buffer);
-	status = device_request("URB 236", device, 0x40, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 237", device, 0x40, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00);
-	status = device_read("URB 238-250", device, sizeof(buffer), buffer);
-	status = device_request("URB 251", device, 0x40, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 252", device, 0x40, 0x01, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00);
-	status = device_read("URB 253-267", device, sizeof(buffer), buffer);
-	status = device_request("URB 268", device, 0x40, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 270", device, 0x40, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00);
-	printf("Connect URB sequence complete\n");
-
-	status = device_request("URB 271", device, 0xc0, 0x05, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00);
-	status = device_request("URB 272", device, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 275", device, 0x40, 0x03, 0x38, 0x41, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 276", device, 0x40, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 278", device, 0x40, 0x02, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00);
-	status = device_request("URB 279", device, 0x40, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 280", device, 0x40, 0x04, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 281", device, 0x40, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 283", device, 0x40, 0x01, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00);
-	status = device_request("URB 284", device, 0x40, 0x07, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00);
-	status = device_read("URB 285-287", device, sizeof(buffer), buffer);
-
-	status = device_write("URB 288", device, 2, 0x5a, 0xa5, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 289", device, 2, 0x00, 0x05, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 290", device, 5, 0x00, 0x10, 0x10, 0x10, 0x01, 0, 0, 0);
-	status = device_write("URB 291", device, 2, 0xed, 0xed, 0, 0, 0, 0, 0, 0);
-	status = wait_for_data(device, 200, sizeof(buffer), buffer);
-
-	status = device_write("URB 440", device, 2, 0x5a, 0xa5, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 441", device, 2, 0x00, 0x02, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 442", device, 2, 0x70, 0x05, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 443", device, 2, 0xed, 0xed, 0, 0, 0, 0, 0, 0);
-	status = wait_for_data(device, 50, sizeof(buffer), buffer);
-
-	status = device_write("URB 577", device, 2, 0x5a, 0xa5, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 578", device, 2, 0x00, 0x01, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 579", device, 1, 0x31, 0, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 580", device, 2, 0xed, 0xed, 0, 0, 0, 0, 0, 0);
-	status = wait_for_data(device, 50, sizeof(buffer), buffer);
-
-	status = device_write("URB 584", device, 2, 0x5a, 0xa5, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 585", device, 2, 0x00, 0x02, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 586", device, 2, 0x42, 0x01, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 587", device, 2, 0xed, 0xed, 0, 0, 0, 0, 0, 0);
-	status = wait_for_data(device, 50, sizeof(buffer), buffer);
-
-	status = device_write("URB 634", device, 2, 0x5a, 0xa5, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 635", device, 2, 0x00, 0x02, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 636", device, 2, 0x13, 0x00, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 637", device, 2, 0xed, 0xed, 0, 0, 0, 0, 0, 0);
-	status = wait_for_data(device, 50, sizeof(buffer), buffer);
-
-	status = device_write("URB 667", device, 2, 0x5a, 0xa5, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 668", device, 2, 0x00, 0x01, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 669", device, 1, 0x43, 0, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 670", device, 2, 0xed, 0xed, 0, 0, 0, 0, 0, 0);
-	status = wait_for_data(device, 50, sizeof(buffer), buffer);
-
-	status = device_write("URB 735", device, 2, 0x5a, 0xa5, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 736", device, 2, 0x00, 0x01, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 737", device, 1, 0x43, 0, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 738", device, 2, 0xed, 0xed, 0, 0, 0, 0, 0, 0);
-	status = wait_for_data(device, 50, sizeof(buffer), buffer);
-
-	status = device_write("URB 743", device, 2, 0x5a, 0xa5, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 745", device, 2, 0x00, 0x06, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 746", device, 6, 0x50, 0, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 747", device, 2, 0xed, 0xed, 0, 0, 0, 0, 0, 0);
-	status = wait_for_data(device, 40, sizeof(buffer), buffer);
-
-	return status;
-}
-
-int change_channel(int device, int channel)
-{
-	unsigned char buffer[256];
-	int status = device_write("URB 765", device, 2, 0x5a, 0xa5, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 767", device, 2, 0x00, 0x06, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 768", device, 6, 0x10, 0x01, channel, 0x00, 0x00, 0x01, 0, 0);
-	status = device_write("URB 771", device, 2, 0xed, 0xed, 0, 0, 0, 0, 0, 0);
-	status = wait_for_data(device, 50, sizeof(buffer), buffer);
-
-	return status;
-}
-
-int refresh_channel(struct mmxmpcr_context *context, int channel)
-{
-	int status = device_write("URB 820", context->device, 2, 0x5a, 0xa5, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 821", context->device, 2, 0x00, 0x04, 0, 0, 0, 0, 0, 0);
-	status = device_write("URB 822", context->device, 4, 0x25, 0x09, channel + 3, 0x00, 0, 0, 0, 0);
-	status = device_write("URB 823", context->device, 2, 0xed, 0xed, 0, 0, 0, 0, 0, 0);
-
-	int received = 0;
-	int timeout = 50;
-	unsigned char buffer[256];
-	unsigned char raw_data[512];
-
-	while (timeout && (received < 83) && (status >= 0))
-		if ((status = read(context->device, buffer, sizeof(buffer))) < 0)
-		{
-			status = -errno;
-			fprintf(stderr, "Failure reading channel information: %s\n", strerror(errno));
-			return status;
-		}
-
-		else if (status <= 2)
-			--timeout;
-
-		else if ((received == 0) && (buffer[2] != 0x5a))
-			--timeout;
-	
-		else 
-		{
-			memcpy(&raw_data[received], &buffer[2], status - 2);
-			received += status - 2;
-		}
-
-	if (timeout <= 0)
-	{
-		fprintf(stderr, "Timed out waiting for channel %d data\n", channel);
-		return -ETIMEDOUT;
-	}
-		
-	// dump_data(buffer, status);
-
-	char channel_data[256];
-	sprintf(channel_data, "%03d: %16.16s %16.16s %16.16s %16.16s", raw_data[8], &raw_data[10], &raw_data[28], &raw_data[45], &raw_data[61]);
-	XmString name = XmStringCreateSimple(channel_data);
-	XmListReplaceItemsPos(context->list, &name, 1, raw_data[8] + 1);
-	XmStringFree(name);
+	// printf("%d byte response received\n", length);
+	// dump_message(message, length);
 
 	return 0;
 }
 
+int mmxmpcr::wait_for_response(unsigned char *message, int timeout_ms)
+{
+	int length = 0;
+	while ((timeout_ms >= 0) && ((length = get_response(message)) == 0))
+	{
+		usleep(100000);
+		timeout_ms -= 100;
+	}
+
+	if (length == 0)
+		return -ETIMEDOUT;
+
+	return length;
+}
+
+int mmxmpcr::change_channel(int channel)
+{
+	unsigned char change_channel[12] = { 0x5A, 0xA5, 0x00, 0x06, 0x10, 0x01, channel, 0x00, 0x00, 0x01, 0xED, 0xED };
+	send_request(12, change_channel);
+
+	unsigned char message[512];
+	wait_for_response(message, 2000);
+
+	unsigned char get_channel_info[10] = { 0x5A, 0xA5, 0x00, 0x04, 0x25, 0x08, channel, 0x00, 0xED, 0xED };
+	send_request(10, get_channel_info);
+
+	return channel;
+}
+
+int mmxmpcr::handle_channel_info()
+{
+	// Issue 5AA5000425090000EDED, and it will return a channel. Then you ack 
+	// with  5AA500042509xx00EDED for whatever channel it just sent.
+
+	unsigned char raw_data[512];
+	memset(raw_data, 0, sizeof(raw_data));
+
+	int status = get_response(raw_data);
+	if ((status < 9) || (raw_data[0] != 0x5a) || (raw_data[4] != 0xA5))
+	{
+		// dump_message(raw_data, status);
+		return -1;
+	}
+
+	char channel_data[256];
+	sprintf(channel_data, "%03d: %16.16s %16.16s %16.16s %16.16s", raw_data[8], &raw_data[10], &raw_data[28], &raw_data[45], &raw_data[61]);
+	XmString name = XmStringCreateSimple(channel_data);
+	XmListReplaceItemsPos(list, &name, 1, raw_data[8] + 1);
+	XmStringFree(name);
+
+	// printf("%s\n", channel_data);
+
+	static int next_channel = 0;
+
+	++next_channel;
+	if (next_channel >= MMXMPCR_MAX_CHANNELS)
+		next_channel = 1;
+
+	unsigned char get_channel_info[10] = { 0x5A, 0xA5, 0x00, 0x04, 0x25, 0x08, next_channel, 0x00, 0xED, 0xED };
+	send_request(10, get_channel_info);
+
+	// printf("Requesting %d\n", next_channel);
+	// dump_message(raw_data, status);
+
+	return 0;
+}
+
+int mmxmpcr::dump_message(unsigned char *message, int length)
+{
+	for (int scan = 0; scan < length; ++scan)
+	{
+		printf("%02x ", message[scan]);
+
+		if ((scan & 0xf) == 0xf)
+			printf("\n");
+	}
+
+	printf("\n");
+
+	for (int scan = 0; scan < length; ++scan)
+	{
+		if ((message[scan] < 32) || (message[scan] > 127))
+			printf("-");
+		else
+			printf("%c", message[scan]);
+
+		if ((scan & 0xf) == 0xf)
+			printf("\n");
+	}
+
+	printf("\n\n");
+	return length;
+}
+
 void refresh_list(XtPointer context_pointer, XtIntervalId *interval)
 {
-	struct mmxmpcr_context* context = (struct mmxmpcr_context*) context_pointer;
+	mmxmpcr *context = (mmxmpcr*) context_pointer;
 
-	static int current_channel = 0;
-	refresh_channel(context, current_channel);
-	current_channel = (current_channel + 1) % MMXMPCR_MAX_CHANNELS;
+	context->handle_channel_info();
 
-	XtAppAddTimeOut(context->application, 10, refresh_list, context_pointer);
+	XtAppAddTimeOut(context->application, 100, refresh_list, context_pointer);
 }
 
 void select_callback(Widget widget, XtPointer client_data, XtPointer call_data)
 {
-	struct mmxmpcr_context *context = (struct mmxmpcr_context*) client_data;
+	mmxmpcr *context = (mmxmpcr*) client_data;
 
 	int selection_count = 0;
 	int *selected_positions = NULL;
@@ -350,9 +340,8 @@ void select_callback(Widget widget, XtPointer client_data, XtPointer call_data)
 
 	if (selected_positions)
 	{
-		printf("Changing to channel %d\n", *selected_positions);	
-		change_channel(context->device, (*selected_positions) - 1);
-		refresh_channel(context, (*selected_positions) - 1);
+		printf("Changing to channel %d\n", (*selected_positions) - 1);	
+		context->change_channel((*selected_positions) - 1);
 	}
 	else
 		printf("No selections\n");
@@ -362,14 +351,13 @@ int main(int argc, char **argv)
 {
 	fprintf(stderr, "%s\n", MMXMPCR_VERSION);
 
-	struct mmxmpcr_context context;
-	context.device = open(MMXMPCR_DEVICE, O_RDWR);
-	if (context.device < 0)
-		return fprintf(stderr, "Failure opening XM PCR device %s: %s\n", MMXMPCR_DEVICE, strerror(errno));
+	int process = fork();
+	if (process < 0)
+		return fprintf(stderr, "Failure forking: %s\n", strerror(errno));
+	else if (process != 0)
+		return process;
 
-	int status = initialize(context.device);
-	if (status < 0)
-		return fprintf(stderr, "Failure initializing XM PCR device %s: %s\n", argv[1], strerror(-status));
+	mmxmpcr context;
 
 	String default_resources[] = {
 		"mmxmpcr*background: white",
