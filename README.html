@@ -1,0 +1,151 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<title>MMXMPCR</title>
+<meta name="keywords" content="Linux, XM Radio, XM PCR, Michael Minn, Satellite Radio, USB">
+<meta name="description" content="MMXMPCR, a kernel module and command line program for playing the XM Radio PCR satellite radio receiver">
+</head>
+<body bgcolor=white>
+
+<h1>MMXMPCR</h1>
+
+<p>Author: Michael Minn <a href="mailto:mmxmpcr@michaelminn.com"><tt>&lt;mmxmpcr@michaelminn.com&gt;</tt></a>
+<p>June 14, 2003
+
+<hr SIZE="1">
+<i>MMXMPCR, a kernel module and command line program for playing the XM Radio PCR satellite radio receiver</i>
+<hr SIZE="1">
+
+<!------------------------------------------------------>
+
+<h2>1. <a name="toc1" href="#section1">Introduction</a></h2>
+
+<p>MMXMPCR is a Linux kernel module and MOTIF GUI for playing the XM PCR USB satellite radio receiver.
+The XM PCR is an inexpensive USB device that permits listening to XM satellite radio through a PC.
+The PC only provides the means for viewing and selecting channels. Audio output from the device
+is analog via a 1/8&quot; phone jack that can be plugged into a computer sound card or a home
+stereo system. Digital audio output is not available from the device.
+
+<p>The kernel module provides device file access to the device via the Linux USB subsystem. 
+The user GUI program is a simple list box that displays what is currently playing on the various 
+XM radio channels and permits the user to change channels.
+
+<p>MMXMPCR has only been tested under Red Hat 8.0 (2.4.18-14 kernel), although it should work under any
+contemporary Linux distro and the author welcomes feedback regarding success or failure under
+other versions of Linux.
+
+<p>The communications protocol was deciphered using USB Snoopy under Windoze. Although the protocol
+seems relatively simple, I only figured out enough to get the device working. No attempt has been
+made to find a way of defeating the subscription protection that is apparently built into the
+device. Since the future of XM Radio is tenuous and dependent on income from a subscription base,
+I would encourage you to support this fabulous resource rather than expending effort on trying
+to get it for free.
+
+<p>MMXMPCR is provided to the open source community to promote further adoption of this device.
+No support or assistance was provided by anyone associated with XM Radio. MMXMPCR 
+is free software; you can redistribute it and/or modify
+it under the terms of version 2 the GNU General Public License as published by
+the Free Software Foundation.  It is provided to the open source community
+without a warranty of any kind.
+
+<p>I LOVE XM Radio and can't imagine how I lived my life without it.  Get it today!
+
+<!---------------------------------------------------->
+
+<hr SIZE="1">
+<h2>2. <a name="section2" href="#toc2">Version History &amp; Download</a></h2>
+
+<p><b><a href="http://www.michaelminn.com/linux/mmxmpcr/mmxmpcr-2003.06.14.tgz">Version 2003.06.14</a></b>:
+Initial release that compiles under Red Hat 8.0
+
+
+<!----------------------------------------------------------->
+
+<hr SIZE="1">
+<h2>3. <a NAME="section3" href="#toc3">Installation</a></h2>
+
+<p>IMPORTANT: The communications chip in the XM PCR is apparently the same as the chip
+as the FTDI RS-232 USB serial port convertor. Although I made a meager attempt
+to access the device through that existing kernel module, I was unsuccessful. Since
+this existing driver will conflict with MMXMPCR, the whole USB serial driver module
+directory must be moved out of the module tree so modprobe doesn't register
+the serial driver with the hotplug agent. You can move it back in the unlikely event you ever need
+a USB serial port.  AS SUPERUSER:
+
+<pre>
+   mv /lib/modules/linux/drivers/usb/serial /lib/modules
+</pre>
+
+
+<p>MMXMPCR consists of a simple kernel module (mmxmpcr.o) and a simple MOTIF GUI program (mmxmpcr).
+Download a tarball from the version list above and AS SUPERUSER decompress the tarball and make install:
+
+<pre>
+	tar -zxvf mmxmpcr*.tgz
+	cd mmxmpcr
+	make install
+</pre>
+
+<p>The make install will place the kernel module in the /lib/.../drivers/usb directory.
+The exact directory depends on the version of the kernel you are running. It
+places the executable file in /usr/local/bin.
+
+<p>The device file (used by the GUI program to exchange information
+with the kernel module) is defined in the Makefile with the constant MMXMPCR_DEVICE_FILE
+as /dev/mmxmpcr. Device files (nodes) each have unique &quot;Major Numbers&quot;
+that distinguish them from other devices and permit multiple files to point
+to the same device driver by using the same Major Number.  MMXMPCR uses Major Number
+189, defined with the constant MMXMPCR_MAJOR_NUMBER in the Makefile. This number was
+chosen arbitrarily and might conflict with another device driver on your system.
+If so, you can make uninstall, change the Makefile MMXMPCR_MAJOR_NUMBER to another unused
+major number, and recompile/reinstall.
+
+
+<!----------------------------------------------------------->
+
+<hr SIZE="1">
+<h2>4. <a NAME="section4" href="#toc4">Uninstall</a></h2>
+
+<p>MMXMPCR can be uninstalled by typing &quot;make uninstall&quot; in the
+source code directory you created above. This will remove the kernel module
+and the user executable. 
+
+
+<!----------------------------------------------------------->
+
+<hr SIZE="1">
+<h2>5. <a NAME="section5" href="#toc5">Operation</a></h2>
+
+<p>It is recommended that you go through the setup and subscription process
+for the XM PCR under Windoze before attempting to use it under Linux. The signal strength
+meter is important for troubleshooting setup and no meter is provided with
+MMXMPCR.
+
+<p>MMXMPCR can be invoked from the command line with &quot;mmxmpcr&quot;. There 
+are no command line arguments. 
+
+<p>The initialization protocol takes a few seconds and a list of channels should pop up.
+The list refreshes sequentially and not very quickly. You can select a channel by clicking on
+the appropriate list entry. Nothing will play until you select a channel.
+
+<p>You will notice large gaps in the list.  These are unused channels. Selecting an unused
+channel will give unpredictable behavior. 
+
+<p>The MMXMPCR program can be terminated by clicking the close icon in the title bar.
+The XM PCR will continue playing the last selected channel if the MMXMPCR program is terminated
+and can only be turned off by unplugging the device or powering down the computer.
+
+<p>Fast, simple, effective. No pretty graphics, but this is about music, not graphics.
+
+<hr SIZE="1">
+
+</body>
+</html>
+
+
+
+
+
+
+
+
