@@ -10,7 +10,7 @@
 <h1>MMXMPCR</h1>
 
 <p>Author: Michael Minn <a href="mailto:mmxmpcr@michaelminn.com"><tt>&lt;mmxmpcr@michaelminn.com&gt;</tt></a>
-<p>December 11, 2003
+<p>January 10, 2003
 
 <hr SIZE="1">
 <i>MMXMPCR, a kernel module and command line program for playing the XM Radio PCR satellite radio receiver</i>
@@ -56,6 +56,12 @@ without a warranty of any kind.
 
 <hr SIZE="1">
 <h2>2. Version History &amp; Download</h2>
+
+<p><b><a href="http://www.michaelminn.com/linux/mmxmpcr/mmxmpcr-2004.01.11.tgz">Version 2004.01.11</a></b>:
+Having problems selecting and displaying certain channels (namely 76 and 171). Changed
+channel selection command from &quot;10 01&quot; to &quot;10 02&quot; and that fixed the
+selection problem. Did further exploration of the channel info response codes to figure
+out the display problem.
 
 <p><b><a href="http://www.michaelminn.com/linux/mmxmpcr/mmxmpcr-2003.12.06.tgz">Version 2003.12.11</a></b>:
 Add mouse wheel page scrolling.
@@ -139,8 +145,10 @@ restarting MMXMPCR (which resets the device).
 <hr SIZE="1">
 <h2>6. Protocol</h2>
 
-<p>Courtesy of Bushing and Dobbz via the <a href=http://www.xmfan.com/viewtopic.php?t=6870&sid=18085bac1e7ad8d0750ec3a324bf0b1a>
-XM Fan XMPCR Hardware & Development Message Board</a>.
+<p>Courtesy of Bushing and Dobbz via the 
+<a href=http://www.xmfan.com/viewtopic.php?t=6870&sid=18085bac1e7ad8d0750ec3a324bf0b1a>
+XM Fan XMPCR Hardware & Development Message Board</a>. Some additional &quot;discoveries&quot;
+of mine follow their comments...
 
 <pre>
 Requests from PC to PCR:
@@ -157,16 +165,17 @@ For example:
 
 
 Known commands:
-00 10 10 10 01    -- power on. see response 80
-01 00      -- power off. see response 81
-13 00       -- ? see response 93
-25 08 xx 00   -- get channel info. see response A5
-25 09 xx 00   -- get channel info. see response A5
-31      -- get radio ID. see response B1
-42 01      -- ? see response C2
-43      -- get signal strength info. see response C3
-50 00 00 00 00 00 -- ?
-70 05      -- get radio info? see response E3
+00 10 10 10 01     -- power on. see response 80
+01 00              -- power off. see response 81
+10 02              -- select channel
+13 00              -- ? see response 93
+25 08 xx 00        -- get channel info. see response A5
+25 09 xx 00        -- get channel info. see response A5
+31                 -- get radio ID. see response B1
+42 01              -- ? see response C2
+43                 -- get signal strength info. see response C3
+50 00 00 00 00 00  -- ?
+70 05              -- get radio info? see response E3
 
 
 Responses from PCR to PC:
@@ -201,7 +210,7 @@ Known responses:
 93 ?? ?? ??
     See request 13 00.
 
-A5: CHINFO
+A5: CHINFO (see below for further notes on this response)
 A5 ?? ?? aa bb ?? XX XX XX XX XX XX XX XX XX XX
 XX XX XX XX XX XX ?? ?? YY YY YY YY YY YY YY YY
 YY YY YY YY YY YY YY YY ?? ZZ ZZ ZZ ZZ ZZ ZZ ZZ
@@ -251,8 +260,39 @@ Issue 5AA5000425090000EDED, and it will return a channel. Then you ack
 with 5AA500042509 xx 00EDED for whatever channel it just sent. It will 
 then send you the next channel in the list. Repeat until it finishes. 
 
-Changing a channel
-5AA500061002 xx 000001EDED
+------------------- Additional Information -------------------------
+
+
+Select (play) a channel (xx is the channel number)
+
+5A A5 00 06 10 02 xx 00 00 01 ED ED
+
+
+Channels can also be selected with the following command,
+although some channels will not select, so the command
+above should be used instead of this
+
+5A A5 00 06 10 01 xx 00 00 01 ED ED
+
+
+For the A5 CHINFO response listed above, there is some meaning to "aa" and "bb".
+aa is always the channel number, but sometimes bb is not the same as
+aa, even if the channel exists.  If the channel doesn't exist, they are always
+different, although exactly what this means is uncertain, other than if the requested
+non-existant channel is less than 79, aa will be LARGER than bb and
+if the non-existant channel is greater than 79, aa will be SMALLER than bb.
+Channel 171 seems to always be the top channel, except for the Playboy subscription channel.
+and responses for channels above 171 and above will always give the info for channel 171
+
+
+When changing channels, the XMPCR also issues a "50" request before and after the
+channel change request. These commands do not appear to be necessary since 
+MMXMPCR works fine without them. This is an example sequence, where xx is the
+current channel and yy is the channel being changed to.
+
+5a a5 00 06 50 xx 00 00 00 00 ED ED
+5a a5 00 06 10 02 yy 00 00 01 ED ED
+5a a5 00 06 50 yy 01 01 01 01 ED ED
 
 </pre>
 

@@ -28,7 +28,7 @@
 #include <Xm/ScrollBar.h>
 #include <X11/keysym.h> // includes keysymdef.h - needed for XK_* constants
 
-#define MMXMPCR_VERSION "MMXMPCR v2003-12-11"
+#define MMXMPCR_VERSION "MMXMPCR v2004-01-11"
 #define MMXMPCR_MAX_CHANNELS 199
 #define MMXMPCR_CHANNELS_PER_PAGE 10
 
@@ -249,11 +249,21 @@ int mmxmpcr::wait_for_response(unsigned char *message, int timeout_ms)
 
 int mmxmpcr::change_channel(int channel)
 {
-	unsigned char change_channel[12] = { 0x5A, 0xA5, 0x00, 0x06, 0x10, 0x01, channel, 0x00, 0x00, 0x01, 0xED, 0xED };
-	send_request(12, change_channel);
+	// printf("Change channel %d (0x%x)\n", channel, channel);
 
 	unsigned char message[512];
+	
+	//unsigned char change_channel_1[12]={ 0x5A, 0xA5, 0x00, 0x06, 0x50, selected_channel, 0x00, 0x00, 0x00, 0x00, 0xED, 0xED };
+	// send_request(12, change_channel_1);
+	// wait_for_response(message, 2000);
+
+	unsigned char change_channel_3[12] = { 0x5A, 0xA5, 0x00, 0x06, 0x10, 0x02, channel, 0x00, 0x00, 0x01, 0xED, 0xED };
+	send_request(12, change_channel_3);
 	wait_for_response(message, 2000);
+
+	//unsigned char change_channel_2[12] = { 0x5A, 0xA5, 0x00, 0x06, 0x50, channel, 0x01, 0x01, 0x01, 0x01, 0xED, 0xED };
+	//send_request(12, change_channel_2);
+	//wait_for_response(message, 2000);
 
 	unsigned char get_channel_info[10] = { 0x5A, 0xA5, 0x00, 0x04, 0x25, 0x08, channel, 0x00, 0xED, 0xED };
 	send_request(10, get_channel_info);
@@ -295,23 +305,33 @@ int mmxmpcr::handle_channel_info()
 		return -1;
 	}
 
-	int list_channel = raw_data[8] - top_channel + 1;
+	int list_channel = raw_data[7] - top_channel + 1;
 	char channel_data[256];
-	sprintf(channel_data, "%03d: %16.16s %16.16s %16.16s %16.16s", raw_data[8], &raw_data[10], &raw_data[28], &raw_data[45], &raw_data[61]);
+	sprintf(channel_data, "%03d: %16.16s %16.16s %16.16s %16.16s", 
+			raw_data[7], &raw_data[10], &raw_data[28], &raw_data[45], &raw_data[61]);
 
-	// When requesting data for a nonexistant channel, sometimes raw_data[8] is a spurious channel number
-	// However, 7 and 8 are different for higher number channels	
-	if ((raw_data[7] == raw_data[8]) || (raw_data[8] > 120))
+	// This is the closest I could figure out for a pattern relating raw_data[7] to raw_data[8]
+	// raw_data[7] is always the channel number, but sometimes raw_data[8] is not the same as
+	// raw_data[7], even if the channel exists.  If the channel doesn't exist, they are always
+	// different, although exactly what this means is uncertain, other than if the requested
+	// non-existant channel is less than 79, raw_data[7] will be greater than raw_data[8] and
+	// if the non-existant channel is greater than 79, raw_data[7] will be larger.
+	// Channel 171 seems to always be the top channel, except for the Playboy subscription channel.
+
+	if (((raw_data[7] < 79) && (raw_data[7] >= raw_data[8])) ||
+	    ((raw_data[7] > 79) && (raw_data[7] < 171) && (raw_data[7] <= raw_data[8])) ||
+	    (raw_data[7] == 171) ||
+	    ((raw_data[7] > 171) && (raw_data[7] == raw_data[8])))
 	{
 		XmString name = XmStringCreateSimple(channel_data);
 		XmListReplaceItemsPos(list, &name, 1, list_channel);
 		XmStringFree(name);
 
-		if (selected_channel == raw_data[8])
+		if (selected_channel == raw_data[7])
 			XmListSelectPos(list, list_channel, 0);
 	}
 
-	// printf("%03d %03d: %s\n", raw_data[7], raw_data[8], channel_data);
+	// printf("%03d %03d %03d: %s\n", raw_data[7], raw_data[8], raw_data[9], channel_data);
 
 	++next_channel;
 
