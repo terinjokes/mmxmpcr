@@ -10,7 +10,7 @@
 <h1>MMXMPCR</h1>
 
 <p>Author: Michael Minn <a href="mailto:mmxmpcr@michaelminn.com"><tt>&lt;mmxmpcr@michaelminn.com&gt;</tt></a>
-<p>January 10, 2003
+<p>February 28, 2003
 
 <hr SIZE="1">
 <i>MMXMPCR, a kernel module and command line program for playing the XM Radio PCR satellite radio receiver</i>
@@ -20,35 +20,31 @@
 
 <h2>1. Introduction</h2>
 
-<p>MMXMPCR is a simple MOTIF GUI for playing the XM PCR USB satellite radio receiver.
+<p>MMXMPCR is a simple program for playing the XM PCR USB satellite radio receiver under Linux.
 The XM PCR is an inexpensive USB device that permits listening to XM satellite radio through a PC.
 The PC only provides the means for viewing and selecting channels. Audio output from the device
 is analog via a 1/8&quot; phone jack that can be plugged into a computer sound card or a home
 stereo system. Digital audio output is not available from the device.
 
-<p>The XM PCR is recoginized as a USB serial device by the ftdi_sio kernel module that
-is provided in most Linux distros and was built to support the FTDI RS-232 USB serial port convertor. 
-The user GUI program is a simple MOTIF list box that displays 
-what is currently playing on the various XM radio channels and permits the user to change channels.
-
-<p>MMXMPCR has only been tested under Red Hat 8.0 (2.4.18-14 kernel), although it should work under any
-contemporary Linux distro and the author welcomes feedback regarding success or failure under
-other versions of Linux.
-
-<p>The communications protocol has been partially deciphered and posted on the
+<p>The XM PCR is recoginized as a USB serial device by the ftdi_sio kernel module that is provided 
+in most Linux distros and was built to support the FTDI RS-232 USB serial port convertor. The 
+communications protocol has been partially deciphered and posted on the
 <a href=http://www.xmfan.com>XM Fan Website.</a> I also did some work using USB Snoopy under Windoze. 
 Although the protocol seems relatively simple, there are some messages of unknown purpose
 that must be sent on faith. No attempt has been made to find a way of defeating the subscription 
-protection that is apparently built into the device. Since the future of XM Radio is tenuous and 
+protection that is built into the device. Since the future of XM Radio is tenuous and 
 dependent on income from a subscription base, I would encourage you to support this fabulous resource 
 rather than expending effort on trying to get it for free.
 
+<p>MMXMPCR can operate either from the command line or a graphical user interface. There are only
+two command line options: 1) power up the unit and select a channel, or 2) select a channel on 
+an already powered-up unit. The user GUI program is a simple MOTIF list box that displays what is 
+currently playing on the various XM radio channels and permits the user to change channels.
+
 <p>MMXMPCR is provided to the open source community to promote further adoption of this device.
-There are other existing packages out there.
-MMXMPCR  is free software; you can redistribute it and/or modify
-it under the terms of version 2 the GNU General Public License as published by
-the Free Software Foundation.  It is provided to the open source community
-without a warranty of any kind.
+There are other existing packages out there. MMXMPCR  is free software; you can redistribute it 
+and/or modify it under the terms of version 2 the GNU General Public License as published by the 
+Free Software Foundation.  It is provided to the open source community without a warranty of any kind.
 
 <p>I LOVE XM Radio and can't imagine how I lived my life without it.  Get it today!
 
@@ -56,6 +52,10 @@ without a warranty of any kind.
 
 <hr SIZE="1">
 <h2>2. Version History &amp; Download</h2>
+
+<p><b><a href="http://www.michaelminn.com/linux/mmxmpcr/mmxmpcr-2004.02.28.tgz">Version 2004.02.28</a></b>:
+Use 25 09 to get channel data rather than 25 08, which was returning unpredictable channel number data.
+Added command line options. Bug fix for segfault in XmListReplaceItemsPos() with negative position index.
 
 <p><b><a href="http://www.michaelminn.com/linux/mmxmpcr/mmxmpcr-2004.01.11.tgz">Version 2004.01.11</a></b>:
 Having problems selecting and displaying certain channels (namely 76 and 171). Changed
@@ -83,7 +83,7 @@ Initial release that compiles under Red Hat 8.0
 <hr SIZE="1">
 <h2>3. Installation</h2>
 
-<p>MMXMPCR consists of a single C++ source file that compiles into a simple MOTIF GUI executable (mmxmpcr).
+<p>MMXMPCR consists of a single C++ source file that compiles into a single executable file (mmxmpcr).
 Download a tarball from the version list above and AS SUPERUSER decompress the tarball and make install:
 
 <pre>
@@ -112,16 +112,25 @@ and manually delete the mmxmpcr executable.
 for the XM PCR under Windoze before attempting to use it under Linux. The signal strength
 meter is important for troubleshooting setup and no meter is provided with MMXMPCR.
 
-<p>MMXMPCR can be invoked from the command line with &quot;mmxmpcr&quot;. There 
-are no command line arguments. 
+<p>There are three options for starting from the command line:
 
-<p>The initialization protocol takes a few seconds and a list of channels should pop up.
-The list refreshes sequentially and not very quickly. You can select a channel by clicking on
-the appropriate list entry. Nothing will play until you select a channel.
+<ul>
+<li>&quot;mmxmpcr -p n&quot; powers up the unit and selects a channel. No graphical interface starts.
 
-<p>Channels are organized in groups of 10, which works out nicely for a single page
-of display. You will notice large gaps in the list reserved for unused channels. Selecting an unused
-channel will give unpredictable behavior - usually nothing happens. 
+<li>&quot;mmxmpcr -c n&quot; selects a channel on an already powered up unit. The unit must already
+have gone through the initialization protocol. No graphical interface starts.
+
+<li>&quot;mmxmpcr&quot; with no command line options powers up the unit and
+starts the MOTIF graphical interface.
+</ul>
+
+<p>The initialization protocol takes a few seconds and if the GUI is chosen, a list of channels 
+should pop up. The list refreshes sequentially and not very quickly. You can select a channel by 
+clicking on the appropriate list entry. Nothing will play until you select a channel.
+
+<p>Channels are organized in groups of 10, which works out nicely for a single page of display. 
+You will notice large gaps in the list reserved for unused channels. Selecting an unused channel 
+will give unpredictable behavior - usually nothing happens. 
 
 <p>The MMXMPCR program can be terminated by clicking the close icon in the title bar.
 The XM PCR will continue playing the last selected channel if the MMXMPCR program is terminated.
@@ -238,7 +247,7 @@ C2 ?? ??
    See request 42 01.
 
 C3: Signal strength?
-C3 <lots and lots of numbers. :)>
+C3 (lots and lots of numbers. :)
    See request 43.
 
 D0: ??
@@ -262,7 +271,6 @@ then send you the next channel in the list. Repeat until it finishes.
 
 ------------------- Additional Information -------------------------
 
-
 Select (play) a channel (xx is the channel number)
 
 5A A5 00 06 10 02 xx 00 00 01 ED ED
@@ -275,15 +283,16 @@ above should be used instead of this
 5A A5 00 06 10 01 xx 00 00 01 ED ED
 
 
-For the A5 CHINFO response listed above, there is some meaning to "aa" and "bb".
-aa is always the channel number, but sometimes bb is not the same as
-aa, even if the channel exists.  If the channel doesn't exist, they are always
-different, although exactly what this means is uncertain, other than if the requested
-non-existant channel is less than 79, aa will be LARGER than bb and
-if the non-existant channel is greater than 79, aa will be SMALLER than bb.
-Channel 171 seems to always be the top channel, except for the Playboy subscription channel.
-and responses for channels above 171 and above will always give the info for channel 171
+Request channel info (A5 CHINFO above) commands are 25 08 and 25 09. 
+With 25 08 there is some meaning to "aa" and "bb". aa is always the 
+channel number, but sometimes bb is not the same as aa, even if the 
+channel exists.  If the channel doesn't exist, they are always
+different, although exactly what this means is uncertain. Also, the
+returned data is data for the last valid channel info request.
 
+With 25 09, aa, bb, and the returned data are always only for 
+valid channels. Request for an invalid channel will yield a response
+with data for the next valid channel.
 
 When changing channels, the XMPCR also issues a "50" request before and after the
 channel change request. These commands do not appear to be necessary since 
