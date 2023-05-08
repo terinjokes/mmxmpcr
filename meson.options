@@ -1,0 +1,1 @@
+option('mmxmpcr_device', type : 'string', value : '/dev/ttyUSB0', description : 'path to MMXMPRC device')

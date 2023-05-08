@@ -90,21 +90,27 @@ Initial release that compiles under Red Hat 8.0
 
 ## 3. Installation
 
-MMXMPCR consists of a single C++ source file that compiles into a single
-executable file (mmxmpcr). Download a tarball from the version list
-above and AS SUPERUSER decompress the tarball and make install:
+This repository has been modified to use the Meson build system to provide
+modern tooling, and standardized options for compiling this project. After
+cloning:
 
-        tar -zxvf mmxmpcr*.tgz
-        cd mmxmpcr
-        make install
+        meson setup --builtype release build-rel
+        cd build-rel
+        ninja
+
+This will compile and link a `mmxmpcr` in the current directory. Should you
+want to install to your system:
+
+        DESTDIR=/usr/local ninja install
 
 ------------------------------------------------------------------------
 
 ## 4. Uninstall
 
-MMXMPCR can be uninstalled by typing \"make uninstall\" in the source
-code directory you created above. You can also go into /usr/local/bin
-and manually delete the mmxmpcr executable.
+If you installed to your system above, you can uninstall by deleting
+the `mmxmpcr` from the chosen prefix.
+
+        rm /usr/loca/bin/mmxmpcr
 
 ------------------------------------------------------------------------
 
